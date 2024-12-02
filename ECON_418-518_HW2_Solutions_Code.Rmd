@@ -1,0 +1,350 @@
+---
+title: "Introduction to Econometrics: ECON 418-518"
+subtitle: "HW2 Solutions Code"
+author: |
+  | <br>William Brasic
+  | The University of Arizona
+date: "<br>24 November 2024"
+output:
+  html_document:
+    df_print: paged
+    css: "C:/Users/wbras/OneDrive/Documents/Desktop/UA/Fall_2024/ECON_418-518/ECON_418-518_HTML_Settings/ECON_418-518_HTML_Setup.css"
+---
+
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+# Preliminaries
+
+```{r}
+
+# Clear environment, plot pane, and console
+rm(list = ls())
+graphics.off()
+cat("\014")
+
+# If pacman is not already installed, then install it
+if (!require(pacman)) install.packages("pacman")
+
+# Load packages
+pacman::p_load(ggplot2, data.table, sandwich, lmtest, margins)
+
+# Set scipen option to a high value to avoid scientific notation
+options(scipen = 999)
+
+```
+
+# Problem 2 (35 Points)
+
+```{r}
+
+# Load in PNTSPRD dataset from Wooldridge as a data table
+dt <- data.table(wooldridge::pntsprd)
+
+```
+
+## Part (i)
+
+If $spread$ incorporates all relevant information in explaining whether the favorite team wins or
+not and $spread$ equals 0 implies that neither team is favored, but rather the odds are even, then
+we would expect $\beta_0 = 0.5$ since, in this case, each team has a 50% chance of winning the game.
+
+
+## Part (ii)
+
+We wish to test the hypothesis of $H_0: \beta_0 = 0.5$ versus $H_A: \beta_0 \neq 0.5$ at the $\alpha = 0.05$ level. Let's load in the data and estimate the LPM to do so. 
+
+```{r}
+
+# Number we are testing beta_0 against
+a <- 0.5
+
+# Significance level
+alpha <- 0.05
+
+# Degrees of freedom
+df <- nrow(dt) - 2
+
+# Estimate the LPM
+reg <- lm(favwin ~ spread, data = dt)
+
+# Show summary of regression
+summary(reg)
+
+# Obtain HC0 standard errors
+HC0 <- vcovHC(reg, type = "HC0")
+
+# Show regression summary using HC0 standard errors
+coeftest(reg, vcov = HC0)
+
+# Extract the intercept estimate and standard errors
+intercept_estimate <- reg$coefficients["(Intercept)"]
+intercept_se <- summary(reg)$coefficients["(Intercept)", "Std. Error"]
+intercept_se_HC0 <- coeftest(reg, vcov = HC0)["(Intercept)", "Std. Error"]
+
+# T-statistic without using HC0
+t_stat_no_HC0 <- (intercept_estimate - a) / intercept_se
+
+# T-statistic with using HC0
+t_stat_w_HC0 <- (intercept_estimate - a) / intercept_se_HC0
+
+# Obtain critical value
+t_crit <- qt(1 - (alpha / 2), df = df)
+
+# Display results
+paste("T-statistic without HC0: ", t_stat_no_HC0)
+paste("T-statistic with HC0: ", t_stat_w_HC0)
+paste("Critical value: ", t_crit)
+
+
+
+```
+
+When using either regular standard errors or HCSE we reject the null hypothesis because the absolute value of the test statistic is greater than the critical value. Thus, we conclude that the intercept term is not equal to 0.5 with 95% confidence.  
+
+
+## Part (iii)
+
+As indicated by the regression summary above, $spread$ is statistically significant at any standard level of $\alpha$. Moreover, the predicted probability that the favored teams wins when $spread = 10$ is
+\begin{align}
+\widehat{\mathbb{P}} \left( favwin = 1 \mid spread = 10 \right)
+&= \widehat{\beta}_0 + \widehat{\beta}_1 spread \\
+&= 0.577 + 0.019(10) \\
+&= 0.767.
+\end{align}
+
+## Part (iv)
+
+
+We wish to test the hypothesis of $H_0: \beta_0 = 0$ versus $H_A: \beta_0 \neq 0$ at the $\alpha = 0.05$ level. Let's estimate a probit model to do so. 
+
+
+```{r}
+
+
+# Estimate the probit model
+probit <- glm(favwin ~ spread, data = dt, family = binomial(link = "probit"))
+
+# Show summary of probit
+summary(probit)
+
+```
+
+The intercept term is statistically insignificant at the $\alpha = 0.05$ level so we fail to reject the null hypothesis that $\beta_0 = 0$. The hint is important because when $spread = 0$, so that neither team is favored, we would get the probability that the favored team wins as
+\begin{align}
+\mathbb{P} \left( favwin = 1 \mid spread = 0 \right)
+&= \Phi \left (\beta_0 + \beta_1 * spread  \right) \\
+&= \Phi \left (\beta_0 + \beta_1 * 0  \right)  \\
+&= \Phi \left (\beta_0 \right).
+\end{align}
+
+When neither team is favored we would expect this probability to be 0.5 which would imply that $\beta_0 = 0$ because $\Phi(0) = 0.5$ due to the symmetry of the standard normal distribution around zero. 
+
+
+## Part (v)
+
+The predicted probability that the favored teams wins when $spread = 10$ when using the Probit model is
+\begin{align}
+\widehat{\mathbb{P}} \left( favwin = 1 \mid spread = 10 \right)
+&= \Phi \left( \widehat{\beta}_0 + \widehat{\beta}_1 spread \right) \\
+&= \Phi (-0.011+ 0.092(10)) \\
+&= \Phi (0.909) \\
+&= 0.818.
+\end{align}
+
+We can obtain $\Phi (0.909)$ by the following code:
+
+```{r}
+
+# Predicted probability
+pnorm(0.909)
+
+```
+
+This prediction is higher than that given by the LPM. 
+
+## Part (vi)
+
+We will test the hypothesis of $H_0: \theta_{favhome} = \theta_{fav25} = \theta_{und25} = 0$ versus $H_A: \theta_{favhome} \neq 0 \ \text{or} \ \theta_{fav25} \neq 0 \ \text{or} \ \theta_{und25} \neq 0$ at the $\alpha = 0.05$ level using a likelihood ratio test. 
+
+To carry out this test we:
+
+1. Estimate the unrestricted model and obtain the log-likelihood
+2. Estimate the restricted model and obtain the log-likelihood
+3. Compute the likelihood ratio test statistic of $LR = 2\left(\mathscr{L}_n\left(\widehat{\boldsymbol{\theta}}_{UR}\right) - \mathscr{L}_n\left(\widehat{\boldsymbol{\theta}}_{R}\right)\right)$. Remember this test statistic asymptotically follows the $\chi^2_q$ distribution where $q$ is the number of restrictions (equal signs) listed in the null hypothesis. 
+4. Compute the $\chi^2_q$ critical value.
+5. Reject the null hypothesis if and only if the likelihood ratio test statistic is greater than the $\chi^2_q$ critical value. 
+
+
+```{r}
+
+# Number of restrictions
+q = 3
+
+# Estimate unrestricted probit regression model
+probit_ur <- glm(favwin ~ spread + favhome + fav25 + und25, data = dt, family = binomial(link = "probit"))
+
+# Get the log-likelihood of the unrestricted probit regression model 
+probit_ur_log_likelihood <- logLik(probit_ur)
+
+# Estimate restricted probit regression model
+probit_r <- glm(favwin ~ spread, data = dt, family = binomial(link = "probit"))
+
+# Get the log-likelihood of the restricted probit regression model 
+probit_r_log_likelihood <- logLik(probit_r)
+
+# Compute the likelihood ratio test statistic
+lr <- 2 * (probit_ur_log_likelihood - probit_r_log_likelihood)
+
+# Show the likelihood ratio test statistic
+paste("Likelihood ratio test statistic:", round(lr, 2))
+
+# Calculate the chi-squared critical value with q degrees of freedom
+crit <- qchisq(0.95, df = q)
+
+# Show the critical value
+paste("Chi-squared critical value with q =", q, "degrees of freedom:", round(crit, 2))
+
+# Print results
+paste("Reject Null Hypothesis:", lr > crit)
+
+```
+
+Since we fail to reject this null hypothesis, this means $favhome$, $fav25$, and $und25$ are jointly statistically insignificant at the $\alpha = 0.05$ level and we can drop them from our model if we wish. 
+
+
+
+# Problem 3 (30 Points)
+
+## Part (i)
+
+We'll first use a Probit model to get the prediction probabilities for whites and non-whites
+
+```{r}
+
+
+# Load in LOANAPP dataset from wooldridge as a data table
+dt <- data.table(wooldridge::loanapp)
+
+# Estimate probit model
+probit <- glm(approve ~ white, data = dt, family = binomial(link = "probit"))
+
+# Summary of probit model
+summary(probit)
+
+# Extract intercept and slope
+intercept <- coef(probit)[1]
+slope <- coef(probit)[2]
+
+# Prediction for whites
+as.numeric(pnorm(intercept + slope))
+
+# Prediction for non-whites
+as.numeric(pnorm(intercept))
+
+```
+
+Thus, the Probit model predicts the probability of loan approval for whites and non-whites is $0.908$ and $0.708$, respectively. 
+
+
+Now, we'll use a LPM to get the prediction probabilities for whites and non-whites
+
+```{r}
+
+
+# Estimate probit model
+lpm <- lm(approve ~ white, data = dt)
+
+# Summary of probit model
+summary(lpm)
+
+# Extract intercept and slope
+intercept <- coef(lpm)[1]
+slope <- coef(lpm)[2]
+
+# Prediction for whites
+as.numeric(intercept + slope)
+
+# Prediction for non-whites
+as.numeric(intercept)
+
+```
+
+Thus, the LPM has the same prediction probabilities for both whites and non-whites as the Probit model. 
+
+
+## Part (ii)
+
+We are interested in testing the hypothesis of $H_0: \beta_1 = 0$ versus $H_A: \beta_1 \neq 0$ at the $\alpha = 0.05$ level.
+
+```{r}
+
+# Estimate probit model
+probit <- glm(approve ~ white + hrat + obrat + loanprc + unem + male + married 
+              + dep + sch + cosign + chist + pubrec + mortlat1 + mortlat2 
+              + vr, data = dt, family = binomial(link = "probit"))
+
+# Summary of probit model
+summary(probit)
+
+```
+
+Since the estimate of $white$ is statistically significant, we conclude there is evidence of discrimination against non-whites. 
+
+
+## Part (iii)
+
+Now, we'll estimate the same specification as in Part (ii), but this time use the Logit model
+
+```{r}
+
+# Estimate logit model
+logit <- glm(approve ~ white + hrat + obrat + loanprc + unem + male + married 
+              + dep + sch + cosign + chist + pubrec + mortlat1 + mortlat2 
+              + vr, data = dt, family = binomial(link = "logit"))
+
+# Summary of logit model
+summary(logit)
+
+```
+
+The Logit model estimates the coefficient of $white$ to be $0.938$ while the Probit model estimates the coefficient of $white$ to be $0.52$. This is quite a large disparity. But, remember these estimates are not to be interpreted as the estimated causal effects! We need to go one step further in Part (iv) to see how the estimated partial effects compare. 
+
+
+## Part (iv)
+
+We'll use the `margins()` function from the `margins` package to estimate the average marginal discrimination effect for both the Probit and Logit models.
+
+```{r}
+
+# Estimated AME for probit model
+summary(margins(probit))
+
+# Estimated AME for logit model
+summary(margins(logit))
+
+```
+
+By clicking `next` in the bottom right corner, you can see the AME for being white. We see that for the Probit model the AME of being white on the probability that a person's loan will be approved is predicted to be $0.086$ while for the Logit model the AME of not being white on the probability that a person's loan will be approved is predicted to be $0.083$. These estimates are quite similar. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
